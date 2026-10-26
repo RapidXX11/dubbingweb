@@ -1,10 +1,274 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>My Mobile Dubbing App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Dubbing Studio</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px 15px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            color: #38bdf8;
+            margin-bottom: 5px;
+        }
+
+        header p {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid #334155;
+        }
+
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* File Upload */
+        input[type="file"] {
+            display: none;
+        }
+
+        .upload-label {
+            display: block;
+            padding: 14px;
+            background: #334155;
+            color: #f8fafc;
+            text-align: center;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px dashed #64748b;
+            transition: all 0.2s;
+        }
+
+        .upload-label:active {
+            transform: scale(0.98);
+        }
+
+        video, audio {
+            width: 100%;
+            border-radius: 10px;
+            margin-top: 15px;
+            background: #000;
+        }
+
+        /* Record Controls */
+        .controls {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        .btn-record {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-stop {
+            background: #64748b;
+            color: white;
+            display: none;
+        }
+
+        .btn-play {
+            background: #10b981;
+            color: white;
+        }
+
+        .status {
+            text-align: center;
+            font-size: 0.85rem;
+            margin-top: 10px;
+            color: #ef4444;
+            font-weight: bold;
+            display: none;
+        }
+
+        .pulse {
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+    </style>
 </head>
 <body>
-    <h1>My Dubbing App</h1>
-    <p>Hello world! This website was built from my phone.</p>
+
+    <header>
+        <h1>🎙️ Mobile Dub Studio</h1>
+        <p>Record voice-overs directly on your phone</p>
+    </header>
+
+    <div class="container">
+        
+        <!-- Step 1: Media Player -->
+        <div class="card">
+            <h2>1. Original Media</h2>
+            <label for="video-upload" class="upload-label">📁 Choose Video or Audio File</label>
+            <input type="file" id="video-upload" accept="video/*,audio/*">
+            <video id="video-player" controls style="display:none;"></video>
+        </div>
+
+        <!-- Step 2: Voice Recorder -->
+        <div class="card">
+            <h2>2. Record Dubbing</h2>
+            <div class="controls">
+                <button id="record-btn" class="btn btn-record">🔴 Record</button>
+                <button id="stop-btn" class="btn btn-stop">⏹️ Stop</button>
+            </div>
+            <div id="status-text" class="status pulse">● Recording in progress...</div>
+            
+            <audio id="audio-playback" controls style="display:none;"></audio>
+        </div>
+
+        <!-- Step 3: Mixed Playback -->
+        <div class="card">
+            <h2>3. Preview Dub</h2>
+            <button id="play-all-btn" class="btn btn-play" disabled>▶️ Play Video & Dub Together</button>
+        </div>
+
+    </div>
+
+    <script>
+        const videoUpload = document.getElementById('video-upload');
+        const videoPlayer = document.getElementById('video-player');
+        const recordBtn = document.getElementById('record-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const statusText = document.getElementById('status-text');
+        const audioPlayback = document.getElementById('audio-playback');
+        const playAllBtn = document.getElementById('play-all-btn');
+
+        let mediaRecorder;
+        let audioChunks = [];
+        let recordedAudioBlob = null;
+
+        // Load uploaded media file
+        videoUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                videoPlayer.src = url;
+                videoPlayer.style.display = 'block';
+            }
+        });
+
+        // Setup microphone recording
+        recordBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+                mediaRecorder.onstop = () => {
+                    recordedAudioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
+                    const audioUrl = URL.createObjectURL(recordedAudioBlob);
+                    audioPlayback.src = audioUrl;
+                    audioPlayback.style.display = 'block';
+                    playAllBtn.disabled = false;
+                };
+
+                mediaRecorder.start();
+                recordBtn.style.display = 'none';
+                stopBtn.style.display = 'block';
+                statusText.style.display = 'block';
+
+                // Automatically start video playback when recording starts
+                if (videoPlayer.src) {
+                    videoPlayer.currentTime = 0;
+                    videoPlayer.play();
+                }
+
+            } catch (err) {
+                alert('Microphone access is required to record audio.');
+            }
+        });
+
+        // Stop recording
+        stopBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+
+            if (videoPlayer.src) {
+                videoPlayer.pause();
+            }
+
+            recordBtn.style.display = 'block';
+            stopBtn.style.display = 'none';
+            statusText.style.display = 'none';
+        });
+
+        // Play video and recorded audio simultaneously
+        playAllBtn.addEventListener('click', () => {
+            if (videoPlayer.src && audioPlayback.src) {
+                videoPlayer.currentTime = 0;
+                audioPlayback.currentTime = 0;
+                videoPlayer.play();
+                audioPlayback.play();
+            }
+        });
+    </script>
 </body>
 </html>
